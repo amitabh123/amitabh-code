@@ -11,7 +11,7 @@
 	  
 	Depends on: DBPool: http://www.snaq.net/java/DBPool/
 	
-2. CompledBD (Java)
+2. ComplexBD (Java)
  
 	A complex number calculator using Java's BigDecimal 
 	Essentially an expression evaluator
