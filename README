@@ -1,0 +1,24 @@
+1. BetterDB (Scala)
+
+    A DB library for Scala (and possibly Java)
+
+		Tested extensively with H2
+		Tested somewhat with MySQL
+		Tested very little with PostgreSQL
+
+    Examples here:
+	  https://github.com/amitabh123/amitabh-code/tree/master/BetterDB/src/test
+	  
+	Depends on: DBPool: http://www.snaq.net/java/DBPool/
+	
+2. CompledBD (Java)
+ 
+	A complex number calculator using Java's BigDecimal 
+	Essentially an expression evaluator
+	
+3. unSVN (Java)
+    
+	A tool to remove the .svn folders from source code
+	
+
+ 
