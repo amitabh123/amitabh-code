@@ -52,7 +52,7 @@ object AllTest extends App {
   def aggregateExample {
     usingExit {    // exit after finishing or on error
       insertExample
-      // SQL query disection
+      // SQL query dissection
       // below defines an mapping for AGGREGATE SQL query.        
       /////////////////////////////////////
       //  Query

@@ -42,7 +42,7 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
   }
   private def validateIncrments(cIncrements:Increments) = {
     val incrCols = cIncrements.map(_.col)                                                                                             
-    incrCols.foreach{incrCol => incrCol.colType match{ // do not allwo increment for composite column
+    incrCols.foreach{incrCol => incrCol.colType match{ // do not allow increment for composite column
         case CompositeCol(lhs, colOp, rhs) => throw new DBException("increment: composite column not allowed: "+incrCol.colSQLString+" of table: "+incrCol.optTable.getOrElse("None"))
         case _ => // ok
       }
