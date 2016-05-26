@@ -8,9 +8,9 @@ import mux.db.BetterDB._
 /**
  * purpose of this code:
  * 
- * Sometimes we have two tables (say INR withdraws and BTC withdraws) as below
+ * Sometimes we have two tables (say INR withdraws and USD withdraws) as below
  * 
- * Table INR withdraws                                                            Table BTC withdraws
+ * Table INR withdraws                                                            Table USD withdraws
 -------------------------------------------                                       --------------------------------------------
 | time | withdrawID | Amount | userID | ...                                       | time | withdrawID |  Amount | userID | ... 
 |------|------------|--------|--------|----                                       -------|------------|-----------------------
@@ -19,7 +19,7 @@ import mux.db.BetterDB._
 | 54   | 4jto4rkmkc | 3444   | alice  | ...                                       | 34   | i4jf4jifjj |  3944   | carol  | ...
 
  * 
- * Sometimes we may need a combined table for both INR and BTC withdraws sorted by time and search by max/offset
+ * Sometimes we may need a combined table for both INR and USD withdraws sorted by time and search by max/offset
  * This is not possible with two separate tables
  * 
  * The MergedIndex object below takes care of this
@@ -31,11 +31,11 @@ import mux.db.BetterDB._
  * case class HalfTable(db:DBManager, indexCol:Col, priKeyCol:Col, filterCol:Col, wheres:Where*){    
  * 
  * If sorting by time, then indexCol will be time.
- * Each table should have a primary key column that can be uniqely used to reference a row
+ * Each table should have a primary key column that can be uniquely used to reference a row
  * Finally the filterCol is the one we will use to filter the results by (say userID).
  * Each half table is declared using the above rule.
  * 
- * The resulying MergedTable M will appear like this
+ * The resulting MergedTable M will appear like this
 --------------------------------------
 | indexCol |  priKeyCol  | filterCol |
 |----------|-------------|-----------|
@@ -60,7 +60,7 @@ import mux.db.BetterDB._
  ecjerjcruc (corresponding to indexCol 20)
  wjdejduejd (corresponding to indexCol 23)
  
- *** A Nested query is an "lazy query", i.e., a query exactly like a normal query except that it has not yet been run. However, when it will run, it will return the above data.
+ *** A Nested query is a "lazy query", i.e., a query exactly like a normal query except that it has not yet been run. However, when it will run, it will return the above data.
  * Examples of nested queries:
  * 
  * SELECT amount FROM T1, (SELECT ID FROM .. AS T2) where T1.ID = T2.ID
@@ -79,6 +79,11 @@ import mux.db.BetterDB._
  Then whenever any entry is added to INR withdraws, it will first cause an entry to be added to M and then (through the chaning) to T
  (Note that we could have done the same thing by manually creating a MergedTable using M and accessing the values (indexCol, priKeyCol, filterCol) of that)
  
+ Note 1. Currently, we have to manually add the row to the merged table using the addRight or addLeft
+ This can be automated via triggers 
+ (currently triggers not supported in this library) 
+ 
+ Note 2. A merged table can be half-table of another merged table (the supertable) via the methods "connectToLeftOf" or "connectToRightOf". In that case, that particular half of the supertable WILL BE automatically populated and should not be manually populated. The other half (if unconnected to any merged table) needs manual population.
  * 
  */
 object MergedIndex {
@@ -109,8 +114,8 @@ object MergedIndex {
           (left.priKeyCol, right.priKeyCol), 
           (left.filterCol, right.filterCol)) foreach{
       case (Col(lhsJavaType, CONST(_, lhsColType), _), Col(rhsJavaType, CONST(_, rhsColType), _)) if lhsJavaType == rhsJavaType && lhsColType == rhsColType => 
-      case (localCol, remoteCol) => 
-        if (localCol.colType != remoteCol.colType) throw new DBException("local remote index mismatch. local: "+localCol.colType+", remote: "+remoteCol.colType)
+      case (leftCol, rightCol) => 
+        if (leftCol.colType != rightCol.colType) throw new DBException("left right index mismatch. left: "+leftCol.colType+", right: "+rightCol.colType)
     }
     if (!left.indexCol.colType.isSortable) throw new DBException("index col type must be sortable: "+left.indexCol.colType) 
     
@@ -150,7 +155,6 @@ object MergedIndex {
     
     @deprecated("Nested queries take long time if the merged index table has > 10k entries. Use getPriKeyTagged instead")
     def getPriKeysNested(from:Any, to:Any, mergedMax:Int, mergedOffset:Long, isDecreasingOrder:Boolean) = {
-      //if (mergedMax > maxqQueryRows) throw new DBException(s"Max must be <= $maxqQueryRows")
       mergedDB.select(priKeyCol).where(
         indexCol >= from, 
         indexCol <= to
@@ -159,17 +163,18 @@ object MergedIndex {
     // below filter will be userID
     @deprecated("Nested queries take long time if the merged index table has > 10k entries. Use getPriKeyTaggedWithFilter instead")
     def getPriKeysNestedWithFilter(filter:Any, from:Any, to:Any, mergedMax:Int, mergedOffset:Long, isDecreasingOrder:Boolean) = {
-      //if (mergedMax > maxqQueryRows) throw new DBException(s"Max must be <= $maxqQueryRows")
       mergedDB.select(priKeyCol).where(
         indexCol >= from, 
         indexCol <= to,
         filterCol === filter
       ).orderBy(indexCol.decreasing).max(mergedMax).offset(mergedOffset).nested
     }
+	// instead of returning a nested query (as in the above methods), the following methods (with suffix "tagged") return an array of primary keys along with a boolean tag 
+	// the tag indicates if the primary key belongs to the right or the left table
+	
     def getPriKeysTagged(from:Any, to:Any, mergedMax:Int, mergedOffset:Long, isDecreasingOrder:Boolean) = {
       // tagged implies that it returns also whether the key belongs to left or right
       // we use a boolean variable isLeft to indicate if this is left. If true, then left, else right
-      //if (mergedMax > maxqQueryRows) throw new DBException(s"Max must be <= $maxqQueryRows")
       mergedDB.select(priKeyCol, whichHalfCol).where(
         indexCol >= from, 
         indexCol <= to
@@ -177,7 +182,6 @@ object MergedIndex {
     }
     // below filter will be userID
     def getPriKeysTaggedWithFilter(filter:Any, from:Any, to:Any, mergedMax:Int, mergedOffset:Long, isDecreasingOrder:Boolean) = {
-      //if (mergedMax > maxqQueryRows) throw new DBException(s"Max must be <= $maxqQueryRows")
       mergedDB.select(priKeyCol, whichHalfCol).where(
         indexCol >= from, 
         indexCol <= to,
@@ -222,7 +226,6 @@ object MergedIndex {
     }
     if (!mergedDB.isNonEmpty) {
       populate
-      //doOnce(println(" [INFO] Populated: "+mergedDB.getTable+" with "+mergedDB.countAllRows+" rows"), 10000)
     }
   }  
 }
