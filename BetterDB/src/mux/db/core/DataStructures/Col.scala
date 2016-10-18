@@ -10,12 +10,16 @@ import mux.db.core.Table
 
 object Col {
   def apply(colName:String, colType:DataType) = new Col(colName, colType, None)
+  
   // following from http://www.h2database.com/html/advanced.html
   val reservedNames = Array("CROSS", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "DISTINCT", "EXCEPT", "EXISTS", "FALSE", "FETCH", "FOR", "FROM", "FULL", "GROUP", "HAVING", "INNER", "INTERSECT", "IS", "JOIN", "LIKE", "LIMIT", "MINUS", "NATURAL", "NOT", "NULL", "OFFSET", "ON", "ORDER", "PRIMARY", "ROWNUM", "SELECT", "SYSDATE", "SYSTIME", "SYSTIMESTAMP", "TODAY", "TRUE", "UNION", "UNIQUE", "WHERE")
 }
 case class Col(name:String, colType:DataType, optTable:Option[Table]) {
   if (Col.reservedNames.contains(name.toUpperCase)) throw DBException(s"column name $name is a reserved word")
   lazy val compositeColData:List[(Any, DataType)] = { // gives data for a composite col // need to check ordring of data 
+    ////////////////////////////////////////////////
+    //////// CHECK ORDERING OF OUTPUT STRING (FOR DATA VALUES)
+    ////////////////////////////////////////////////
     colType match {
       case CompositeCol(lhs, oper, rhs) => 
         lhs.compositeColData ++ (
@@ -33,6 +37,9 @@ case class Col(name:String, colType:DataType, optTable:Option[Table]) {
     case _ => false
   }
   lazy val colSQLString:String = {
+    ////////////////////////////////////////////////
+    //////// CHECK ORDERING OF OUTPUT STRING (FOR DATA VALUES)
+    ////////////////////////////////////////////////
     colType match {
       case CompositeCol(lhs, oper, rhs) => 
         "("+lhs.colSQLString + " "+
@@ -47,6 +54,9 @@ case class Col(name:String, colType:DataType, optTable:Option[Table]) {
   }
 
   lazy val compositeTables:Set[Table] =  { // in the query Select A+B from T, (A+B) is a composite column
+    ////////////////////////////////////////////////
+    //////// ORDERING DOES NOT MATTER AS OUTPUT IS SET
+    ////////////////////////////////////////////////
     colType match{
       case CompositeCol(lhs, oper, rhs:Col) => lhs.compositeTables ++ rhs.compositeTables
       case CompositeCol(lhs, oper, rhs) => lhs.compositeTables

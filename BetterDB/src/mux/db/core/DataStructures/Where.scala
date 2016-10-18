@@ -31,12 +31,10 @@ case class Where(col:Col, op:Op, data:Any) {
     case whereJoin:WhereJoin => Where(col, whereJoin.to(table), data) // keeping (col, data) same instead of (col.to(table), data.to(table)
     case _ => Where(col.to(table), op, data.to(table))
   }
-  /////////////////// need to change below ////////////////////
   def isDataAnotherCol = data match {
     case _:Col => true
     case _ => false
   }
-  /////////////////// need to change below ////////////////////
   lazy val whereSQLString:String = op match {
     case WhereJoin(left, whereOp, right) => "("+left.whereSQLString+" "+whereOp+" "+right.whereSQLString+")"        
     case _ => col.colSQLString+" "+op+ " "+ (
@@ -44,11 +42,11 @@ case class Where(col:Col, op:Op, data:Any) {
           case (From, n:Nested) => n.alias(col.alias, op)+"."+n.nestedColAlias
           case (From, n) => throw DBException("from operation must map to NestedSelect. Found: "+n+" of type: "+n.getClass)
           case (_, any) => 
+            //println(" ==ANY==> "+any.anySQLString)
             any.anySQLString
         }
       )
   }
-  /////////////////// need to change below ////////////////////
   lazy val compositeWheres:Array[Where] = {
     op match {
       case WhereJoin(left, whereOp, right) => left.compositeWheres ++ right.compositeWheres
@@ -61,10 +59,8 @@ case class Where(col:Col, op:Op, data:Any) {
       (w.op, w.data) match {
         case (_, c:Col) => c.compositeColData
         case (From, n:Nested) => 
-          // SELECT c1 FROM t1, (SELECT c2 FROM t2) as foo where t1.c1 = foo.c2
           Nil 
         case (op, n:Nested) => 
-          // SELECT c1 FROM t1 where t1.c1 = (SELECT c2 from t2)
           n.nestedData
           case (_ ,d:Array[Byte]) => List((d, w.col.colType)) // for blob
           case (_ ,d:Array[Any]) => d.toList.map(x => (x, w.col.colType))
@@ -77,7 +73,7 @@ case class Where(col:Col, op:Op, data:Any) {
     case Where(_, From, n:Nested) => n.nestedData
       // SELECT a from t1, (SELECT b from t2 where ...) AS t3 WHERE t1.c = t3.b
       // here the "(SELECT b from t2 where ...)" part is the above... 
-      // the above gives data foe the internal select query
+      // the above gives data for the internal select query
     case _ => Nil
   }
   lazy val nestedWhereTables:Array[String] = compositeWheres.flatMap{ // List.. ordering needs to be preserved because we need to set data

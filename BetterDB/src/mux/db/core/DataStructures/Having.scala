@@ -16,12 +16,10 @@ case class Having(aggregate:Aggregate, op:Op, data:Any) {
     case whereJoin:HavingJoin => Having(aggregate, whereJoin.to(table), data) // keeping (col, data) same instead of (col.to(table), data.to(table)
     case _ => Having(aggregate.to(table), op, data.to(table))
   }
-  /////////////////// need to change below ////////////////////
   def isDataAnotherAggregate = data match {
     case _:Aggregate => true
     case _ => false
   }
-  /////////////////// need to change below ////////////////////
   lazy val havingSQLString:String = op match {
     case HavingJoin(left, whereOp, right) => "("+left.havingSQLString+" "+whereOp+" "+right.havingSQLString+")"        
     case _ => 
@@ -33,7 +31,6 @@ case class Having(aggregate:Aggregate, op:Op, data:Any) {
         }
       )
   }
-  /////////////////// need to change below ////////////////////
   lazy val compositeHavings:Array[Having] = {
     op match {
       case HavingJoin(left, whereOp, right) => left.compositeHavings ++ right.compositeHavings

@@ -2,7 +2,7 @@ package mux.db.core.DataStructures
 
 import mux.db.core.Table
 
-  object Aggregate{def apply(aggregate:(Col, Aggr)) = new Aggregate(aggregate._1, aggregate._2)}
+object Aggregate{def apply(aggregate:(Col, Aggr)) = new Aggregate(aggregate._1, aggregate._2)}
 
 case class Aggregate(col:Col, aggr:Aggr) {
   lazy val isComposite = aggr match {
@@ -59,7 +59,8 @@ case class Aggregate(col:Col, aggr:Aggr) {
   }
   lazy val aggrHash = compositeAggrData.map(_._1).foldLeft(hash(aggrSQLString+aggr.getClass.getSimpleName))((x, y) => hash(x+y))+aggr
 
-  lazy val alias = aggrHash 
+
+  lazy val alias = aggrHash // hash(tableColName)
 
   lazy val canDoAggregate = (col.colType, aggr) match {
     case (INT | LONG | UINT(_) | ULONG(_) | TIMESTAMP | CompositeCol(_,_,_), _) => true // should we allow aggregate for composite cols?

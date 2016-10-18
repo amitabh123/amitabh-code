@@ -6,7 +6,6 @@ import mux.db.core.FKDataStructures._
 import amit.common.Util._
 
 case class Table(tableName:String, tableCols:Cols, priKey:Cols) {
-
   import Table._
   if (Col.reservedNames.contains(tableName.toUpperCase)) throw DBException(s"table name $tableName is a reserved word")
 
@@ -63,6 +62,7 @@ case class Table(tableName:String, tableCols:Cols, priKey:Cols) {
     val dataTables = wheres.collect{
       case Where(_, _, col:Col) => col.compositeTableNames
     }.flatten.toSet
+
     val allTables =   wheres.flatMap(_.nestedWhereTables) ++ (selectTables ++ whereTables ++ dataTables + tableName) // add this table name too (last item)
     allTables.reduceLeft(_+","+_)
   }
@@ -116,9 +116,11 @@ case class Table(tableName:String, tableCols:Cols, priKey:Cols) {
   // intervals can only be applied to Numeric type (INT, LONG, ULONG, UINT). (U)ScalaBIGINT is not supported.
   //  uses the idea from http://stackoverflow.com/a/197300/243233
   ////////////////////////////////////////
+  //
   def aggregateSQLString(aggregates:Aggregates, wheres:Wheres, groupByIntervals:GroupByIntervals, havings:Havings) = {
-    //SELECT MAX(USERS.SAL) as LjkkudMSTzMAX,((USERS.AGE + USERS.SAL) + 4) as uOzFPSGTyfinterval0 FROM USERS WHERE USERS.SAL > 10000 GROUP BY uOzFPSGTyfinterval0
+    //"SELECT "+getOpStr(select)+intervalString(groupByIntervals)+" FROM "+tableName+ 
     val tableNames = getTableNames(aggregates.map(_.col), wheres)
+    //SELECT MAX(USERS.SAL) as LjkkudMSTzMAX,((USERS.AGE + USERS.SAL) + 4) as uOzFPSGTyfinterval0 FROM USERS WHERE USERS.SAL > 10000 GROUP BY uOzFPSGTyfinterval0
     "SELECT "+
     aggregateString(aggregates)+ // MAX(USERS.SAL) as LjkkudMSTzMAX
     intervalString(groupByIntervals)+ // ((USERS.AGE + USERS.SAL) + 4) as uOzFPSGTyfinterval0
@@ -192,7 +194,6 @@ case class Table(tableName:String, tableCols:Cols, priKey:Cols) {
   def getIndexName(cols:Cols) = {
     if (cols.isEmpty) throw DBException("at least one column is needed for index")
     val name = shaSmall(tableName+"_"+cols.map(_.alias).reduceLeft(_+_))
-    //println(" =INDEX=> "+name)
     name
   }
   //////////////////////////////////////////////////////////////////
@@ -200,12 +201,14 @@ case class Table(tableName:String, tableCols:Cols, priKey:Cols) {
   def getH2ExportStr(file:String, cols:Cols, wheres:Wheres) = "CALL CSVWRITE('"+file+"', '"+selectSQLString(cols, wheres)+"')"
   def getH2ExportStr(file:String, wheres:Wheres):String = getH2ExportStr(file, Array(), wheres)
   def getH2ImportStr(file:String) = "INSERT INTO "+tableName+" SELECT * FROM CSVREAD('"+file+"')"
-  
+    
 }
 object Table {
   def apply(tableName:String, col:Col, priKey:Col) = new Table(tableName, Array(col), Array(priKey))
   def apply(tableName:String, tableCols:Cols) = new Table(tableName, tableCols, Array[Col]())
   def apply(tableName:String, tableCols:Col*):Table = apply(tableName, tableCols.toArray)
+  // def apply(tableName:String, tableCols:Cols, priKeyCols:Col*):Table = new Table(tableName, tableCols.toArray, priKeyCols.toArray)    
+
   def createPostGreBlob = "CREATE DOMAIN BLOB as BYTEA"
   private def getOrdering(isDescending:Boolean) = if (isDescending) " DESC" else ""
   private def getOrderStr(orderings:Orderings) = {
@@ -270,14 +273,3 @@ object Table {
   def getH2PassString(user:String, pass:String) = "ALTER USER "+user+" SET PASSWORD '"+pass+"'"
   
 }
-
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////

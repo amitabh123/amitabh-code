@@ -111,6 +111,9 @@ package object DataStructures{
   case class VARCHAR(size:Int) extends DataType {
     def isSortable = false
   }
+  
+  object BOOLEAN extends UINT(1)
+  
   object VARCHARANY extends DataType {
     def isSortable = false
   }
@@ -189,9 +192,7 @@ package object DataStructures{
   implicit def colToOrdering(col:Col) = Ordering(col, Increasing)
   implicit def groupByIntervalToTop(groupByInterval:GroupByInterval) = Aggregate(groupByInterval.col, Top(Some(groupByInterval.interval)))
   
-  implicit def colToGroupBy(col:Col) = Aggregate(col, GroupBy) // converts col:Col to Aggregate(col, GroupBy)
-      // for instance SELECT name, MAX(age) WHERE ...                is converted to 
-      //              SELECT name, MAX(age) WHERE ... GROUP BY name 
+  implicit def colToGroupBy(col:Col) = Aggregate(col, GroupBy)
   implicit def dbMgrToTable(dbm:DBManager) = dbm.getTable
   
   abstract class Op {override def toString:String} // Op is op used in where clauses
@@ -206,20 +207,11 @@ package object DataStructures{
   
   object In extends Op{override def toString = "IN"}
   object NotIn extends Op{override def toString = "NOT IN"}
-  //  // following are experimental
-  //  object EqSome extends Op{override def toString = "= SOME"} // may not work in some versions of H2
-  //  object EqAny extends Op{override def toString = "= ANY"} // may not work in some versions of H2
-  //  object InAny extends Op{override def toString = "IN ANY"} // may not work in some versions of H2
-  //  object NeAll extends Op{override def toString = "<> ALL"} // works equivalent to NOT IN ... but NOT IN had issue with H2 version.. NOT IN is better though
-  //    see http://stackoverflow.com/q/35274539/243233
   
   object Like extends Op {override def toString = "LIKE"}
   object RegExp extends Op {override def toString = "REGEXP"}
   object NotRegExp extends Op {override def toString = "NOT REGEXP"}
   object NotLike extends Op {override def toString = "NOT LIKE"}
-  //  object StartsWith extends Op {override def toString = ???}   // to implement if needed (using Like)
-  //  object EndsWith extends Op {override def toString = ???}   // to implement if needed (using Like)
-  //  object Contains extends Op {override def toString = ???}   // to implement if needed (using Like)
   
   
   val allOps = Seq(Eq, Le, Ge, Gt, Lt, Ne, Like, NotLike, RegExp, NotRegExp)
@@ -344,6 +336,7 @@ package object DataStructures{
     lazy val order = if (isDescending) "DESC" else "ASC"
     override def toString = s"ORDERBY ($col, $order)"    
     def to(table:Table) = Ordering(col.to(table), isDescending)
+
   }
   
   implicit def toAggregate(a:(Col, Aggr)) = Aggregate(a)
@@ -381,11 +374,6 @@ package object DataStructures{
   type Orderings = Array[Ordering]  
 
 }
-
-////////////////////////////////////
-////////////////////////////////////
-////////////////////////////////////
-////////////////////////////////////
 ////////////////////////////////////
 ////////////////////////////////////
 ////////////////////////////////////

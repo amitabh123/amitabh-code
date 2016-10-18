@@ -11,8 +11,19 @@ import java.sql.ResultSet
 import java.sql.{ResultSet => RS}
 
 abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
+  def usingOpt[A <: {def close(): Unit}, B](optA: Option[A], getA: => A)(f: A => B): B = {
+    optA match {
+      case Some(a) => 
+        f(a) // dont close.
+      case _ =>
+        val a = getA
+        try f(a) finally a.close
+    }
+  }
+    
   protected def connection:Connection
   import table._
+  //  def testCanonicalUpdate[T](u:Update[T]) = canonical(u)
   // maps cols without table names (i.e., from this table) to cols with table names
   // e.g. if this table is T1 then cols in selectCols without optTable.isDefined will have optTable changed to T1.
   private def canonical(c:Col):Col = c.to(table)
@@ -84,6 +95,48 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
       // NOTE: g.interval == 0 implies its a GroupBy column
     }
   }
+  private def validateJoin(cSelect:Cols, cWheres:Wheres) = {
+    // "c" implies input is in canonical form
+    // this method checks if there are any "hanging" tables in joins.
+    // 
+    // What this means is that in joins, for the tables appearing in the select clause, each table must be reachable 
+    // from every other table (via the "where t1.c1 = t2.c2" type clauses). 
+    // For instance, 
+    //      select t1.c1, t2.c1 where t1.c1 = t2.c2      
+    // is valid, but
+    //      select t1.c1, t2.c1 where t1.c1 = 5      
+    // is not valid
+    // 
+    // 
+    val tables = cSelect.map(_.optTable.get).toSet //.toArray
+    
+    val joins = cWheres.flatMap(_.compositeWheres).filter{w =>
+      w.isDataAnotherCol && w.op == Eq
+    }.map{w =>
+      (w.col.optTable.get, w.data.asInstanceOf[Col].optTable.get)
+    }.filter{case (t1, t2) => t1 != t2}.map{case (t1, t2) => Set(t1, t2)}.toSet //.toArray
+    
+    if (tables.nonEmpty) {
+      val headTable = tables.head
+      var remainingTables:Set[Table] = tables - headTable
+      var remainingJoins:Set[Set[Table]] = joins
+
+      def removeConnectedFromRemainingTables(currTable:Table):Unit = {
+        val (joinsWithCurr, joinsWithoutCurr)  = remainingJoins.partition(_.contains(currTable))      
+        val joinedToCurrFlatten = joinsWithCurr.flatten
+        val (joinedToCurr, notJoinedToCurr) = remainingTables.partition(joinedToCurrFlatten.contains)
+        remainingTables = notJoinedToCurr
+        remainingJoins = joinsWithoutCurr
+        joinedToCurr.foreach{j =>
+          if (remainingTables.nonEmpty && remainingJoins.nonEmpty) removeConnectedFromRemainingTables(j)
+        }
+      }
+      removeConnectedFromRemainingTables(headTable)
+      if (remainingTables.nonEmpty) {
+        throw DBException(s"""no join found for table(s): ${remainingTables.map(_.tableName).reduceLeft(_+","+_)}""")
+      }
+    }
+  }
   private def validateCanonical(cCols:Cols, cWheres:Wheres, cOrderings:Orderings, cIncrements:Increments, cAggregates:Aggregates, cGroupByIntervals:GroupByIntervals):Unit = {
     // check all dbs belong to same dbname etc
     validateAggregates(cAggregates)
@@ -134,14 +187,10 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
      *    @param data is an array giving the values to insert in the Cols (columns). Every column must be filled.
      *    @return the number of rows affected by the query
      */ /* to override in SecureDBManager */
-  ///////////////////////////////////////////////////////////////////  
-  ///////////////////////////////////////////////////////////////////
-  // need to fix the Where part to be compatible with joins. dont use ColOp  
-  ///////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////
-  def insertArray(data:Array[Any]) = {
+
+  def insertArray(data:Array[Any])(implicit optConn:Option[java.sql.Connection] = None) = {
     assert(data.size == tableCols.size, "schema mismatch table["+table+"]. Expected ["+tableCols.size+"] columns; found ["+data.size+"]")
-    using(connection){conn =>
+    usingOpt(optConn, connection){conn =>
       if (printSQL_?) println("Insert query SQL [?]:\n  "+insertSQLString)
       using(conn.prepareStatement(insertSQLString)){st => {
           val (_, debugInsertString) = setData(data zip tableCols.map(_.colType), 0, st:PreparedStatement, insertSQLString)
@@ -159,16 +208,11 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
      *  @param updates is an array of Update giving the cols and data to update
      *  @return the number of rows updated
      */ /* to override in SecureDBManager */   
-  ///////////////////////////////////////////////////////////////////  
-  ///////////////////////////////////////////////////////////////////
-  // need to fix the Where part to be compatible with joins. dont use ColOp  
-  ///////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////
-  def updateCols(wheres:Wheres, updates:Updates[Any]):Int = {                   // WHAT IF UPDATES CONTAIN COMPOSITE COLS???
+  def updateCols(wheres:Wheres, updates:Updates[Any])(implicit optConn:Option[java.sql.Connection] = None):Int = {                   // WHAT IF UPDATES CONTAIN COMPOSITE COLS???
     validateUpdates(updates)
     val (cWheres, cUpdates) = (canonical(wheres), canonical(updates))
     validateCanonical(cUpdates.map(_.col), wheres, Array(), Array(), Array(), Array())
-    using(connection){conn =>
+    usingOpt(optConn, connection){conn =>
       val sqlString = updateSQLString(cWheres, cUpdates)
       if (printSQL_?) println("Update query SQL [?]:\n  "+sqlString)
       using(conn.prepareStatement(sqlString)){st => {
@@ -194,29 +238,46 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
      *
      *  The caller should ensure that the colType of each element of updateCols is INT.
      */ /* no need to override in SecureDBManager (it calls other overridden methods) */
-  ///////////////////////////////////////////////////////////////////
-  // need to fix the Where part to be compatible with joins. dont use ColOp  
-  ///////////////////////////////////////////////////////////////////
-  def incrementColsTx(wheres:Wheres, increments:Increments):Int = using(connection){conn => // WHAT IF INCREMENTS CONTAIN COMPOSITE COLS???
-    //val (cWheres, cIncrements) = (canonical(wheres), canonical(increments))    
-    conn.setAutoCommit(false) // transaction start
-    try {
-      val incrCols = increments.map(_.col)
-      val after = selectCols(wheres, incrCols, incrementIt(_, increments.map(_.data)))
-      val resCols = after.size match {
-        case 0 => throw new DBException("increment: no rows matched in table ["+table+"] for cols ["+incrCols.map(_.name).reduceLeft(_+","+_)+"]")
-        case 1 => updateCols(wheres, incrCols zip after(0) map(z => Update(z._1, z._2)))
-        case n => throw new DBException("increment: > 1  rows ["+n+"] matched in table ["+table+"] for cols ["+incrCols.map(_.name).reduceLeft(_+","+_)+"]")
+  private final val lockedForIncrement = new java.util.concurrent.atomic.AtomicBoolean(false)
+  @deprecated private def usingAtoimcLock[T](f: => T):T = {
+    if(lockedForIncrement.compareAndSet(false, true)) {
+     //db is now locked
+     try f
+     finally lockedForIncrement.set(false)
+    } else {
+     //db is already locked
+     throw new Exception(s"db is locked for increment: $table")
+    }
+  }
+  private def usingAtoimcSpinLock[T](f: => T):T = {
+    while (!lockedForIncrement.compareAndSet(false, true)) {Thread.sleep(10)}
+    try f
+    finally lockedForIncrement.set(false)
+  }
+  def incrementColsTx(wheres:Wheres, increments:Increments)(implicit optConn:Option[java.sql.Connection] = None):Int = {
+    usingOpt(optConn, connection){conn => // WHAT IF INCREMENTS CONTAIN COMPOSITE COLS???
+      //val (cWheres, cIncrements) = (canonical(wheres), canonical(increments))    
+      usingAtoimcSpinLock {
+        conn.setAutoCommit(false) // transaction start
+        try {
+          val incrCols = increments.map(_.col)
+          val after = selectCols(wheres, incrCols, incrementIt(_, increments.map(_.data)))(Array(), 0, 0, Some(conn))
+          val resCols = after.size match {
+            case 0 => throw new DBException("increment: no rows matched in table ["+table+"] for cols ["+incrCols.map(_.name).reduceLeft(_+","+_)+"]")
+            case 1 => updateCols(wheres, incrCols zip after(0) map(z => Update(z._1, z._2)))(Some(conn))
+            case n => throw new DBException("increment: > 1  rows ["+n+"] matched in table ["+table+"] for cols ["+incrCols.map(_.name).reduceLeft(_+","+_)+"]")
+          }
+          conn.commit // transaction commit if everything goes well
+          resCols
+        } catch { 
+          case e: Exception => 
+            e.printStackTrace
+            conn.rollback 
+            throw new DBException("Increment aborted. Table ["+table+"]. Error: "+e.getMessage)
+        } finally {
+          conn.setAutoCommit(true)
+        }
       }
-      conn.commit // transaction commit if everything goes well
-      resCols
-    } catch { 
-      case e: Exception => 
-        e.printStackTrace
-        conn.rollback 
-        throw new DBException("Increment aborted. Table ["+table+"]. Error: "+e.getMessage)
-    } finally {
-      conn.setAutoCommit(true)
     }
   }
   
@@ -238,14 +299,11 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
     * For this reason, do not use this at all. Use incrementColTx instead which performs an ACID update (read, increment, update in a transaction)
     * If not using H2 or Postgresql, this is fine to use.
     */ /* to override in SecureDBManager */
-  ///////////////////////////////////////////////////////////////////
-  // need to fix the Where part to be compatible with joins. dont use ColOp  
-  ///////////////////////////////////////////////////////////////////
-  @deprecated def incrementCols(wheres:Wheres, increments:Increments) = { /// WHAT IF INCREMENT CONTAINS COMPOSITE COLS???
+  @deprecated def incrementCols(wheres:Wheres, increments:Increments)(implicit optConn:Option[java.sql.Connection] = None) = { /// WHAT IF INCREMENT CONTAINS COMPOSITE COLS???
     val (cWheres, cIncrements) = (canonical(wheres), canonical(increments))
     validateCanonical(Array(), cWheres, Array(), cIncrements, Array(), Array())
     
-    using(connection){conn =>
+    using(optConn.getOrElse(connection)){conn =>
       val sqlString = incrementColsString(cWheres, cIncrements)
       if (printSQL_?) println("IncrementColTx query SQL [?]:\n  "+sqlString)
       using(conn.prepareStatement(sqlString)){st => {
@@ -265,7 +323,7 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
      *  otherwise an exception is thrown (for instance, if searchCol.colType = INT and data is "XYZ")
      *  @return the number of rows deleted
      */ /* to override in SecureDBManager */
-  def delete(wheres:Wheres):Int = {
+  def delete(wheres:Wheres)(implicit optConn:Option[java.sql.Connection] = None):Int = {
     val cWheres = canonical(wheres)
     validateCanonical(Array(), cWheres, Array(), Array(), Array(), Array())
     using(connection){conn =>
@@ -286,7 +344,16 @@ abstract class DBManagerDML(table:Table, dbConfig:TraitDBConfig) {
     * http://stackoverflow.com/a/197300/243233
     * 
     */ /* to override in SecureDBManager */
-  protected[db] def aggregateGroupHaving[T](aggregates:Aggregates, wheres:Wheres, groupByIntervals:GroupByIntervals, havings:Havings, func: (RS, String)=>T)(implicit func2:String => T = ???) = { // default implementation missing. Must provide implicit (or explicit) parameter
+  protected[db] def aggregateGroupHaving[T](
+    aggregates:Aggregates, 
+    wheres:Wheres, 
+    groupByIntervals:GroupByIntervals, 
+    havings:Havings, 
+    func: (RS, String)=>T
+  )(
+    implicit func2:String => T = ???,
+    optConn:Option[java.sql.Connection] = None
+  ) = { // default implementation missing. Must provide implicit (or explicit) parameter
     val (cAggregatesTemp, cWheres, cGroupByIntervals, cHavings) = (canonical(aggregates), canonical(wheres), canonical(groupByIntervals), canonical(havings))
     
     // purpose of following block.
@@ -333,7 +400,7 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
     // SELECT MAX(USERS.SAL) as LjkkudMSTzMAX,((USERS.AGE + USERS.SAL) + 4) as uOzFPSGTyfinterval0 FROM USERS WHERE USERS.SAL > 10000 GROUP BY uOzFPSGTyfinterval0    
     // SELECT max(age + (sal + 3))/avg(sal - 5) group by (sal + 2)
     validateCanonical(Array(), cWheres, Array(), Array(), cAggregates, cGroupByIntervals, cHavings)    
-    using(connection){conn => 
+    using(optConn.getOrElse(connection)){conn => 
       val sqlString = aggregateSQLString(cAggregates, cWheres, cGroupByIntervals, cHavings) // setting var for debug
       if (printSQL_?) println("AggregateGroup query SQL [?]:\n  "+sqlString)
       using(conn.prepareStatement(sqlString)){st => {          
@@ -350,7 +417,7 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
                       val x = rs.getArray(ag.alias).getArray.asInstanceOf[Array[Object]](0).asInstanceOf[String].split(',')
                       func2((if (ag.aggr == First) x.head else x.last))
                     case Top(Some(interval)) => func(rs, GroupByInterval(ag.col, interval).alias)
-                    case DataStructures.GroupBy => //func(rs, GroupByInterval(ag.col, 0).alias)
+                    case DataStructures.GroupBy => 
                       get(rs, ag.col, Some(GroupByInterval(ag.col, 0).alias))
                     case Top => throw DBException("Top must specify an interval that was used in Group-by-interval for that column") // func(rs, GroupByInterval(ag.col, interval).alias)                    
                     case any => 
@@ -365,7 +432,7 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
     }
   }
 
-  def selectInto(db:DBManager, cWheres:Wheres, cCols:Cols)(implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0) = {
+  def selectInto(db:DBManager, cWheres:Wheres, cCols:Cols)(implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0, optConn:Option[java.sql.Connection] = None) = {
     // query of type INSERT INTO T1 SELECT A, B, C FROM T2
     selectAnyResultSet(
       (cCols, cWheres, cOrderings, limit, offset) => insertIntoSQLString(db.getTable, cCols, cWheres)(cOrderings, limit, offset),
@@ -374,7 +441,8 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
     )
   }
   
-  private def selectResultSet[T](cWheres:Wheres, cCols:Cols, func:ResultSet => T) (implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0):T = {
+  private def selectResultSet[T](cWheres:Wheres, cCols:Cols, func:ResultSet => T) (implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0, optConn:Option[java.sql.Connection] = None):T = {
+    validateJoin(cCols, cWheres)
     selectAnyResultSet(
       (cCols, cWheres, cOrderings, limit, offset) => {
         selectSQLString(cCols, cWheres)(cOrderings, limit, offset)
@@ -386,8 +454,8 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
   private def selectAnyResultSet[T](
     getSQLString:(Cols, Wheres, Orderings, Int, Long) => String,
     doSQLQuery:PreparedStatement => T,
-    cWheres:Wheres, cCols:Cols) (implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0):T = {
-    using(connection){conn =>
+    cWheres:Wheres, cCols:Cols) (implicit cOrderings:Orderings=Array(), limit:Int = 0, offset:Long = 0, optConn:Option[java.sql.Connection] = None):T = {
+    usingOpt(optConn, connection){conn =>
       val sqlString = getSQLString(cCols, cWheres, cOrderings, limit, offset)
       if (printSQL_?) println("Select query SQL [?]:\n  "+sqlString)
       using(conn.prepareStatement(sqlString)){st => {
@@ -409,7 +477,6 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
   protected [db] def getAggregateData(cAggregates:Aggregates, cGroupByIntervals:GroupByIntervals, cWheres:Wheres, cHavings:Havings):Array[(Any, DataType)] = 
     cAggregates.flatMap(_.compositeAggrData) ++ cGroupByIntervals.flatMap(_.col.compositeColData) ++ getWheresData(cWheres) ++ getHavingsData(cHavings) 
   
-  // will override this in SecureDBManager (done?)
   
    /**
      *
@@ -434,31 +501,25 @@ For making a Top query on a column, that column MUST be used in Group-by-interva
      *
      */  /* to override in SecureDBManager */
   // search M select M  
-  def selectCols[T](wheres:Wheres, cols:Cols, func: Array[Any]=>T) (implicit orderings:Orderings=Array(), limit:Int = 0, offset:Long = 0):List[T] = {
+  def selectCols[T](wheres:Wheres, cols:Cols, func: Array[Any]=>T) (implicit orderings:Orderings=Array(), limit:Int = 0, offset:Long = 0, optConn:Option[java.sql.Connection] = None):List[T] = {
     val (cWheres, cCols, cOrderings) = (canonical(wheres), canonical(cols), canonical(orderings))    
     validateCanonical(cCols, cWheres, cOrderings, Array(), Array(), Array())
-    selectResultSet(cWheres, cCols, rs => bmap(rs.next)(func (cCols.map(get(rs, _)))))(cOrderings, limit, offset)
-    
-    // why not use below? (implicit limit and offset are automatically supplied?)
-    // selectResultSet(cWheres, cSelectCols, rs => bmap(rs.next)(func (cSelectCols.map(get(rs, _)))))(cOrderings)
+    selectResultSet(cWheres, cCols, rs => bmap(rs.next)(func (cCols.map(get(rs, _)))))(cOrderings, limit, offset, optConn)
   }
-  // will override this in SecureDBManager (toDo)
-  def selectRS[T](wheres:Wheres, cols:Cols, func: ResultSet => T) (implicit orderings:Orderings=Array(), limit:Int = 0, offset:Long = 0):T = {
+  def selectRS[T](wheres:Wheres, cols:Cols, func: ResultSet => T) (implicit orderings:Orderings=Array(), limit:Int = 0, offset:Long = 0, optConn:Option[java.sql.Connection] = None):T = {
     val (cWheres, cCols, cOrderings) = (canonical(wheres), canonical(cols), canonical(orderings))
-    selectResultSet(cWheres, cCols, func)(cOrderings, limit, offset)  
+    selectResultSet(cWheres, cCols, func)(cOrderings, limit, offset, optConn)  
   }
-  // will override this in SecureDBManager (toDo) // commented below because moved to DBManager 
-  //  def insertRS[T](cols:Cols, rs:ResultSet) = bmap(rs.next)(insert(cols.map(get(rs, _)))).size   
 
   /**
      * counts all rows in the table matching the select criteria given by wheres
      *  @param wheres is an Array of Where (the criteria (Col, Op, Value)) for the cols to search in.
      *
      */  /* to override in SecureDBManager */  
-  def countRows(wheres:Wheres):Long = {
+  def countRows(wheres:Wheres)(implicit optConn:Option[java.sql.Connection]= None):Long = {
     val cWheres = canonical(wheres)
     validateCanonical(Array(), cWheres, Array(), Array(), Array(), Array())      
-    using(connection){conn =>
+    usingOpt(optConn, connection){conn =>
       val sqlString = countSQLString(cWheres)
       if (printSQL_?) println("Count query SQL [?]:\n  "+sqlString)
       using(conn.prepareStatement(sqlString)){st => {

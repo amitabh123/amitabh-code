@@ -38,3 +38,13 @@ object FKDataStructures {
   }
 }
 
+
+//  case class Link(fkCol:Col, pkTable:Table, rule:FkRule) { // later on make fkCol as an Array of Col to handle compisite keys
+//    if (pkTable.priKey.size != 1) 
+//      throw new DBException("table["+pkTable+"] composite primary keys not allowed. Use LinkComposite.")
+//    val pkCol = pkTable.priKey.head
+//    if (fkCol.colType != pkCol.colType) 
+//      throw new DBException("FK Constraint: PK col["+pkTable+"]:["+pkCol+"]'s type["+pkCol.colType+"] "+
+//                            "does not match FK col["+fkCol+"]'s type["+fkCol.colType+"]" )
+//  }
+

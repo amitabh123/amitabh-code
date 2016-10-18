@@ -1,6 +1,7 @@
 package mux.db.core
 
 import DataStructures._
+import amit.common.file.TraitFilePropertyReader
 import amit.common.json.JSONUtil.JsonFormatted
 import java.sql.SQLException
 import java.sql.Timestamp
@@ -46,6 +47,7 @@ object Util extends TraitFilePropertyReader {
       case VARCHAR(_)|VARCHARANY => data
       case INT | UINT(_) => data.toInt
       case LONG | ULONG(_) => data.toLong
+      //case BLOB => rs.getBlob
       case any => throw new DBException("unsupported type: "+any)
     }
   }
@@ -109,6 +111,11 @@ object Util extends TraitFilePropertyReader {
         //case TIMESTAMP => rs.getString  // timestamp read as a string. Might change to timestamp type in future
         case TIMESTAMP => rs.getTimestamp // timestamp read as a string. Might change to timestamp type in future
         case VARBINARY(s) => rs.getBytes
+        case BOOLEAN => 
+          rs.getInt(_) match {
+            case 0 => false 
+            case _ => true
+          }          
         case ScalaBIGINT(size) => s => BigInt(rs.getString(s)) // scala bigint stored as varchar // keep size to 255 usually
         case UScalaBIGINT(size) => s => BigInt(rs.getString(s)) // scala bigint stored as varchar // keep size to 255 usually
         case VARCHAR(_)|VARCHARANY => rs.getString
@@ -117,6 +124,7 @@ object Util extends TraitFilePropertyReader {
         case BLOB => rs.getBytes
         case CompositeCol(lhs, _, _) => getFunc(lhs.colType)
         case CONST(_, t) => getFunc(t)
+        //case BLOB => rs.getBlob
         case any => _ => throw new DBException("unsupported type: "+any)
       }
     }
@@ -144,6 +152,7 @@ object Util extends TraitFilePropertyReader {
     the constraints to be checked. This flag will be then set to false.
   */
   def set(ctr: Int, st:PreparedStatement, data: Any, d:DataType, ignoreUnsigned:Boolean = true):Unit = {
+    //println("START ==> "+ctr+"\n "+ st +"\n   DATA: "+data + "\n   TYPE: "+ d)
     def signException(x:Number, d:DataType) = if (!ignoreUnsigned) throw new SQLException("unsigned constraint violation: ["+x+"] for ["+d+"]")
     def rangeException(n:Number, x:Any, d:DataType) = throw new SQLException("range constraint violation: ["+x+"] for ["+d+"] (limit: "+n+")")
     d match {
@@ -185,6 +194,7 @@ object Util extends TraitFilePropertyReader {
             if (x < 0) signException(x, d)
             val str = ("%0"+s+"d").format(x)
             if (str.size > s) rangeException(s, x.toString.take(10)+"...", d)
+            //if (str.size > s) throw new SQLException("scala bigint size > "+s+": "+x.toString.take(10)+"...")
             st.setString(ctr, str) 
           case x: Long => set(ctr, st, BigInt(x), d)
           case x: Int => set(ctr, st, BigInt(x), d)
@@ -194,7 +204,8 @@ object Util extends TraitFilePropertyReader {
           case x: Int => 
             if (x < 0) signException(x, d)
             if (x > n) rangeException(n, x, d)
-            st.setInt(ctr, x) 
+            st.setInt(ctr, x)
+          case x:Boolean if n == 1 => st.setInt(ctr, if (x) 1 else 0)
           case any => anyException(any, classOf[Int])
         }
       case ULONG(n) => data match { 
@@ -219,10 +230,41 @@ object Util extends TraitFilePropertyReader {
           case _ => throw new DBException("Data type not supported: "+data+" for oper: "+oper)
         }
       case _ => 
+        
     }
   }
   def getSQLTimeStamp:java.sql.Timestamp = { new java.sql.Timestamp(new java.util.Date().getTime) }
-  
+  def isTypeMatch(data:Any, colType:DataType) = (data, colType) match { // only checks type matching, doesnt check crypto compatibility (e.g., salts)
+    //    cases to handle: cc = composite col; c = ordinary col
+    // LHS    RHS
+    // c      d
+    // cc     c
+    //        cc
+    // -----------------
+    // c      d       OK
+    // c      c       OK
+    // c      cc      OK
+    // cc     d       OK
+    // cc     c       OK
+    // cc     cc      OK
+    case (i:Int, INT|UINT(_)) => true
+    case (l:Long, LONG|ULONG(_)) => true
+    case (i:Int, LONG|ULONG(_)) => true
+    case (i:java.lang.Integer, LONG|ULONG(_)) => true
+    case (i:java.lang.Integer, INT|UINT(_)) => true
+    case (i:Int, ScalaBIGINT(_)|UScalaBIGINT(_)) => true
+    case (l:Long, ScalaBIGINT(_)|UScalaBIGINT(_)) => true
+    case (b:BigInt, ScalaBIGINT(_)|UScalaBIGINT(_)) => true
+    case (s:String, VARCHAR(_)|VARCHARANY) => true
+    case (a:Array[Byte], BLOB|VARBINARY(_)) => true
+    case (t:Timestamp, TIMESTAMP) => true
+    case (Col(_, LONG|ULONG(_)|INT|UINT(_), _), CompositeCol(_, _, _)) => true  // cc   c
+    case (c:Number, CompositeCol(_, _, _)) => true                              // cc   d
+    case (c:Col, t) if c.colType == t => true                                   // cc   cc
+                                                                                // c    c
+    case (c:Col, LONG|ULONG(_)|INT|UINT(_)) if c.isComposite => true            // c    cc
+    case _ => false
+  }
   def canDoComparison(col:Col, op:Op) = (col.colType, op) match {
     case (colType, _) if colType.isSortable => true
     case (_, From | In | NotIn) => true
@@ -232,6 +274,7 @@ object Util extends TraitFilePropertyReader {
     case _ => false
   }
   
+  // do double check below
   def canDoComparison(aggregate:Aggregate, op:Op) = (aggregate, op) match {
     case (Aggregate(_, Top | First | Last), _)  => false
     case (_, Eq | Ne | Le | Ge | Gt | Lt)  => true
@@ -248,9 +291,6 @@ object Util extends TraitFilePropertyReader {
     case (a, i) => throw new DBException("cannot do increment on ["+a+":+"+a.getClass.getCanonicalName+"] with ["+i+":"+i.getClass.getCanonicalName+"]")
   }  
 }
-
-//////////////////////////////////////////
-//////////////////////////////////////////
 //////////////////////////////////////////
 //////////////////////////////////////////
 //////////////////////////////////////////

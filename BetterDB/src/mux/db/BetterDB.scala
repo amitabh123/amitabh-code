@@ -24,7 +24,7 @@ object BetterDB {
   type DBAggr = (DBM, Aggregates, Wheres, Havings)
   type DBAggrGrp = (DBM, Aggregates, Wheres, Havings, GroupByIntervals)
   
-
+  
   case class Sel[T](qry:DBSelect[T]){
     val (db, origCols, origWheres, origMax, origOffset, origOrderings, origToT) = qry
     def execute = db.selectCols(origWheres, origCols, origToT)(origOrderings, origMax,origOffset)
@@ -36,12 +36,13 @@ object BetterDB {
     def offset(offset:Long) = Sel(db, origCols, origWheres, origMax, offset, origOrderings, origToT)
     def orderBy(orderings:Orderings) = Sel(db, origCols, origWheres, origMax, origOffset, origOrderings ++ (orderings.filterNot(origOrderings.contains)), origToT)
     def orderBy(orderings:Ordering*):Sel[_] = orderBy(orderings.toArray) // Qry(db, origCols, origWheres, origMax, origOffset, origOrderings ++ (orderBy.filterNot(origOrderings.contains)), origToT)
+    //////
     def as[B](arrayAnyToT:toT[B]) = Sel(db, origCols, origWheres, origMax, origOffset, origOrderings, arrayAnyToT).execute
     def castFirstAs[T] = as(_(0).as[T])
     def firstAs[T](anyToT:Any => T) = as(a => anyToT(a(0)))
     def asList = Sel[List[Any]](db, origCols, origWheres, origMax, origOffset, origOrderings, _.toList).execute
     def into(otherDB:DBM) = db.selectInto(otherDB, origWheres, origCols)(origOrderings, origMax,origOffset)
-    def nested = { // possible problem if origCol has tableSpecificInfo
+    @deprecated("Nested are resource intensive", "2 June 2016") def nested = { // possible problem if origCol has tableSpecificInfo
       if (origCols.size != 1) throw DBException("BetterDB: selected cols size must be 1 in nested select")
       val table = db.getTable
       
@@ -62,10 +63,12 @@ object BetterDB {
     def firstAsBigInt = asBigInt(0).as[BigInt]
     def having(havings:Havings) = Agg(db, origAggrs, origWheres, origHavings ++ (havings.filterNot(origHavings.contains)))
     def having(havings:Having*):Agg = having(havings.toArray)
+    
     def asLong = db.aggregateLong(origAggrs, origWheres, origHavings) 
     def asInt = db.aggregateInt(origAggrs, origWheres, origHavings)
     def asDouble = db.aggregateDouble(origAggrs, origWheres, origHavings)
     def asBigInt = db.aggregateBigInt(origAggrs, origWheres, origHavings)
+    
     def groupByInterval(groupByIntervals:GroupByIntervals) = Grp(db, origAggrs, origWheres, origHavings, groupByIntervals)
     def groupByInterval(groupByIntervals:GroupByInterval*):Grp = groupByInterval(groupByIntervals.toArray)
     def groupBy(cols:Cols) = groupByInterval(cols.map(_ \ 0))
@@ -76,7 +79,6 @@ object BetterDB {
     }
   }
   case class Grp(qry:DBAggrGrp) {
-    
     val (db, origAggrs, origWheres, origHavings, origGrps) = qry
     def where(wheres:Wheres) = Grp(db, origAggrs, origWheres ++ (wheres.filterNot(origWheres.contains)), origHavings, origGrps)
     def where(wheres:Where*):Grp = where(wheres.toArray)
@@ -159,6 +161,7 @@ object BetterDB {
   }
   implicit def dbToDB(s: DBM) = new BetterDB(s)
   implicit def selToNested(s:Sel[_]) = s.nested
+
 }
 ///////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////

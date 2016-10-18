@@ -13,7 +13,7 @@ import mux.db.core.FKDataStructures._
 import DBManagerMgmt._
 
 object DBManager {
-  val noCols = Array[Col]()
+  val noCols = Array[Col]()  
   def apply(name:String)(cols:Col *)(priCols:Col *)(implicit config:TraitDBConfig = DefaultDBConfigFromFile) = new DBManager(Table(name, cols.toArray, priCols.toArray))(config)
   def apply(name:String, cols:Cols, priCols:Cols)(implicit config:TraitDBConfig):DBManager = apply(name)(cols: _ *)(priCols: _ *)(config)
   def apply(name:String, cols:Cols, priCol:Col)(implicit config:TraitDBConfig):DBManager = apply(name, cols, Array(priCol))(config)
@@ -28,16 +28,14 @@ object DBManager {
 }
 /* Database functionality for making the following SQL queries: SELECT, DELETE, INSERT and UPDATE */
 class DBManager(val table:Table)(implicit val dbConfig:TraitDBConfig = DefaultDBConfigFromFile) extends DBManagerDDL(table:Table, dbConfig:TraitDBConfig) with JsonFormatted {
-
   implicit val dbDML:DBManagerDML = this
   import table._
   val tableID = table.tableName+"_"+shaSmall(table.tableName+"|"+dbConfig.dbname+"|"+dbConfig.dbhost+"|"+dbConfig.dbms)
   val keys = Array("tableName", "dbname", "host", "dbms", "tableID", "numCols")
   val vals = Array[Any](table.tableName, dbConfig.dbname, dbConfig.dbhost, dbConfig.dbms, tableID, tableCols.size)
   
-  if (dbConfig.dbms == "postgresql") {
+  if (dbConfig.dbms == "postgresql") {  // new version supports??
     using(connection){  // postgresql does not support blob. So we create an alias from blob to bytea
-      //// POSTGRESQL TO DEBUG .. added tryIt
       conn => using(conn.prepareStatement(Table.createPostGreBlob))(_.executeUpdate)
     }
   }
@@ -105,10 +103,15 @@ class DBManager(val table:Table)(implicit val dbConfig:TraitDBConfig = DefaultDB
     if (data.size != 1) throw DBException("Aggregate query returned "+data.size+" rows. Require exactly one row for this operation")
     data(0)
   }
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // DDL related stuff below
   //////////////////////////////////////////////////////////////////////////////////////////////////
-   
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
   // initialize table
   createTableIfNotExists // create table if it does not exist
   validateTableSchema // see if schema of actual table matches schems here
@@ -160,6 +163,7 @@ class DBManager(val table:Table)(implicit val dbConfig:TraitDBConfig = DefaultDB
     using(connection){conn =>
       using(conn.prepareStatement(getH2ExportStr(file, wheres))) { st => 
         setData(getWheresData(wheres), 0, st, debugStr)
+        //setWheres(wheres, 0, st, debugStr)
         st.executeUpdate
       } 
     }
@@ -182,7 +186,13 @@ class DBManager(val table:Table)(implicit val dbConfig:TraitDBConfig = DefaultDB
       } 
     }
   }
+  //////////////////////////////////////////////////////////////////
+  def exportAllEncrypted(file:String, secretKey:String) = exportEncrypted(file, secretKey)
+  def exportEncrypted(file:String, secretKey:String, wheres: Where *):Int = exportToEncryptedCSV(this, file, secretKey, wheres.toArray)
+  def importEncrypted(file:String, secretKey:String) = importFromEncryptedCSV(this, file, secretKey)
   DBManager.addLoadedDBManager(this, tableID, Thread.currentThread.getStackTrace.toList.take(4).map(_.toString).reduceLeft(_+","+_))
+  
+  
   
 }
 
