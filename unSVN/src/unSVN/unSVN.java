@@ -5,10 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-/**
- *
- * @author Amitabh
- */
 public class unSVN {
     public static void main(String[] args) throws IOException {
         puts ("un-SVN. Deletes all .svn directores from a given root folder (inclusive)\n");

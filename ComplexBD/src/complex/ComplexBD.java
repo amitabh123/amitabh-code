@@ -104,7 +104,6 @@ public class ComplexBD {
             } catch (Exception e) {
                 System.out.println(//"Exception: " +
                         e.getMessage());
-//                e.printStackTrace();
                 continue;
             }
         }
@@ -123,7 +122,6 @@ public class ComplexBD {
                 } catch (Exception e) {                    
                     System.out.print(//"Exception: " +
                             e.getMessage());
-                    // e.printStackTrace();
                 }
         }
 
