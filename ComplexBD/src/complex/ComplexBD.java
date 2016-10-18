@@ -3,17 +3,6 @@ package complex;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-// m3=( m2 = (alog m1=(log m0=(334444^34)))-m0 )
-// m7=( m6 = (m5=(m4=(123.4567890^133.3212345)^(1/127.5555444))^(127.55554444))-m4 )
-// m7=( m6 = (m5=(m4=(123.4567890^33.3212345)^(1/27.5555444))^(27.55554444))-m4 )
-// m7=( m6 = (m5=(m4=(12.34567890^33.3212345)^(1/27.5555444))^(27.55554444))-m4 )
-// m4 = (m3=(m2=(m0=224.34567890^m1=233.3212345)^(1/m1))-m0)
-//
-// problem instructions
-// tan(pi/4+10i) /* solved! */
-// pi, scale 256, scale 128, disp 128, pi, scale 256, disp 625, disp 256, pi
-// 55+54i
-//
 public class ComplexBD {
     public static void put(String string) {
         System.out.print(string);
