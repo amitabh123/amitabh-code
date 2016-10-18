@@ -3,6 +3,7 @@ package complex;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+
 public class ComplexBD {
     public static void put(String string) {
         System.out.print(string);
@@ -40,8 +41,8 @@ public class ComplexBD {
                 if (string.startsWith("scale")) {
                     String tmp1 = string.substring("scale".length()).trim();
                     if (tmp1.isEmpty()) {
-                        puts("Scale is " + BD.getScale());
-                        puts("This is the decimal scale of all complex numbers");
+                        puts("Scale is: " + BD.getScale());
+                        puts("This is the DECIMAL scale of all complex numbers");
                         puts("To change, type \"scale\" followed by a number");
                     } else {
                         BD.initScale(Integer.valueOf(tmp1));
