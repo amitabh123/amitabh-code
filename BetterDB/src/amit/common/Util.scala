@@ -163,8 +163,6 @@ object Util {
   }
 
 
-  def trycatch1[B](list: => B):B = ???
-
   /** used for DB read */
   import scala.collection.mutable.ListBuffer
   def bmap[T](test: => Boolean)(block: => T): List[T] = {

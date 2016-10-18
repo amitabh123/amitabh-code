@@ -12,14 +12,15 @@ import amit.common.Util._
 trait TraitCommonFilePropReader {  
   val propertyFile : String
   val propertyDirectory = "properties"  
-  def fileExists = Util.fileExists(fullFileName)// existingFiles.contains(fullFileName)
+  def fileExists = Util.fileExists(fullFileName)
   private def actualFileName = propertyFile
-  def fullFileName : String = propertyDirectory + "/" +actualFileName   // System.getProperty("file.separator")
+  def fullFileName : String = propertyDirectory + "/" +actualFileName   
   override def toString = fullFileName
   var isInitialized = false
   val props = new Properties
   final val readOnlyTag = "$readOnly"
   lazy val readOnly = read(readOnlyTag, false)
+  
   // the following processes the inputstream
   def processIS(is:InputStream):InputStream  
   def initialize = { // for command-line and web-server
