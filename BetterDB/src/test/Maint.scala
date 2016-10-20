@@ -40,6 +40,7 @@ object Maint extends App{
   foo
   
   def foo = usingExit { // exit on done
+  
     val (uid, email, value, scan) = (Col("uid", VARCHAR(255)), Col("email", VARCHAR(255)), Col("value", UScalaBIGINT(100)), 
                                      Col("passportScan", BLOB))
     val tableOld = Table("blobsOldTable", Array(uid, email, value, scan), Array(uid))
