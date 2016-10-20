@@ -32,7 +32,6 @@ object FKTest {
     udb.insert(Array("user1", "user@someplace.com", BigInt(922337)))
     udb.insert(Array("user2", "user2@hotmail2.com", 34344))
     idb.insert(Array("item1", "item1Desc"))
-//    udb.selectStar(uid, email, bal).as(arrayToPerson) foreach println
     
     odb.insert("user1", "order1", "item1", "amt")
     
