@@ -35,12 +35,11 @@ object Maint extends App{
     val connTimeOut:Int = 1000 // seconds
     val usePool:Boolean = true // e.g. true (use db pool)
     val configSource = "test"
-  }
-  
+  } 
   foo
   
   def foo = usingExit { // exit on done
-  
+ 
     val (uid, email, value, scan) = (Col("uid", VARCHAR(255)), Col("email", VARCHAR(255)), Col("value", UScalaBIGINT(100)), 
                                      Col("passportScan", BLOB))
     val tableOld = Table("blobsOldTable", Array(uid, email, value, scan), Array(uid))
