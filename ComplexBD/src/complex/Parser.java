@@ -1,7 +1,7 @@
 package complex;
 
 public class Parser {
-
+	// to write in scala
     // Priority for evaluation
     final static int none = 0;
     final static int add = none + 1;
