@@ -25,6 +25,7 @@ object Maint extends App{
     val usePool:Boolean = true // e.g. true (use db pool)
     val configSource = "test"
   }
+  
   object NewConfig extends TraitDBConfig {
     val dbname:String = "mydbNew"
     val dbhost:String = "localhost"
@@ -35,8 +36,10 @@ object Maint extends App{
     val usePool:Boolean = true // e.g. true (use db pool)
     val configSource = "test"
   }
+  
   foo
-  def foo = usingExit {
+  
+  def foo = usingExit { // exit on done
     val (uid, email, value, scan) = (Col("uid", VARCHAR(255)), Col("email", VARCHAR(255)), Col("value", UScalaBIGINT(100)), 
                                      Col("passportScan", BLOB))
     val tableOld = Table("blobsOldTable", Array(uid, email, value, scan), Array(uid))
