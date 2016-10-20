@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
+// make it for scala
 public class ComplexBD {
     public static void put(String string) {
         System.out.print(string);
