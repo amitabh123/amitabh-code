@@ -11,6 +11,9 @@ import BetterDB._
 import BetterDB.Implicits._
 
 object AllTest extends App {
+  // This is main testing file
+  // this uses others
+  
   val STR = VARCHAR(255)
   val name = Col("NAME", STR)
   val age = Col("AGE", UINT)
@@ -20,7 +23,9 @@ object AllTest extends App {
   case class User(name:String, age:Int, sal:Int)
   object User{def apply(a:Array[Any]) = new User(a(0).as[String], a(1).as[Int], a(2).as[Int])}
   def asUser(a:Array[Any]) = User(a)
+  
   aggregateExample
+  
   def insertExample{
     // insert some data
     db.insert("alice", 20, 25000)
