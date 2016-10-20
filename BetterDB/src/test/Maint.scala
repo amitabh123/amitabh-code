@@ -13,6 +13,7 @@ object Maint extends App{
   def arrayToPerson(a:Array[Any]) = {
     Person(a(0).asInstanceOf[String], a(1).asInstanceOf[String], a(2).asInstanceOf[BigInt], a(3).asInstanceOf[Array[Byte]])
   }
+  
   // copies from old to new
   object OldConfig extends TraitDBConfig {
     val dbname:String = "mydbOld"
